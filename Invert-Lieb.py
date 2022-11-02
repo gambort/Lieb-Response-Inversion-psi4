@@ -153,7 +153,7 @@ if Opts.Calcdv and not(Opts.DFA.upper() in ("HF", "SCF")):
         Normalize = True,
         ForceUpdate = True,
     )
-    print("="*72)    
+    print("="*72)
     
 
 np.savez("Densities/Conv_%s_%s_%s.npz"%(CoreFileName, Opts.Basis.lower(), Opts.DFA.lower()),
@@ -205,3 +205,10 @@ if Opts.CalcPot or Opts.CalcPotc \
              xyz_Nuc = Mol.geometry().to_array(dense=True),
     )
     
+print("="*72)
+print("Ts(Max   ) = %8.4f Ha"%(XHelp.Ts_Ref))
+print("Ts(Extrap) = %8.4f Ha"%(XHelp.Ts_Extrap))
+print("Ts(DFA   ) = %8.4f Ha"%(XHelp.Ts0))
+print("epsilon(HOMO) = %8.4f Ha (%8.1f eV)"%(XHelp.epsilon_Ref[XHelp.kh], XHelp.epsilon_Ref[XHelp.kh]*27.211))
+print("epsilon(LUMO) = %8.4f Ha (%8.1f eV)"%(XHelp.epsilon_Ref[XHelp.kl], XHelp.epsilon_Ref[XHelp.kl]*27.211))
+print("="*72)

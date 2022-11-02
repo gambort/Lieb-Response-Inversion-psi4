@@ -727,6 +727,8 @@ class InversionHelper:
             FsX = FsMax
 
 
+        self.Ts_Extrap = FsX
+
         F0Min, eps0, C0, D0, q, En, f = QSolve(F0Min)
         if not(self.Params['EThermal'] is None) \
            and not(self.Params['EThermal'] < 1e-3):
