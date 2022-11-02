@@ -18,7 +18,7 @@ psi4.set_memory('8 GB')
 psi4.set_output_file("__Invert-Lieb.out")
 
 parser = OptionParser()
-parser.add_option('-M', type="string", default='./QuestDB/hydrogen_chloride.xyz',
+parser.add_option('-M', type="string", default='./SysDB/hydrogen_chloride.xyz',
                   help="A molecule file in psi4 or xyz format")
 parser.add_option('--DFA', type="string", default="svwn",
                   help="Specify the DFA")
