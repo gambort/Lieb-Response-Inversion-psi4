@@ -1,0 +1,78 @@
+
+    -----------------------------------------------------------------------
+          Psi4: An Open-Source Ab Initio Electronic Structure Package
+                               Psi4 1.6 release
+
+                         Git: Rev {HEAD} 77475b5 
+
+
+    D. G. A. Smith, L. A. Burns, A. C. Simmonett, R. M. Parrish,
+    M. C. Schieber, R. Galvelis, P. Kraus, H. Kruse, R. Di Remigio,
+    A. Alenaizan, A. M. James, S. Lehtola, J. P. Misiewicz, M. Scheurer,
+    R. A. Shaw, J. B. Schriber, Y. Xie, Z. L. Glick, D. A. Sirianni,
+    J. S. O'Brien, J. M. Waldrop, A. Kumar, E. G. Hohenstein,
+    B. P. Pritchard, B. R. Brooks, H. F. Schaefer III, A. Yu. Sokolov,
+    K. Patkowski, A. E. DePrince III, U. Bozkaya, R. A. King,
+    F. A. Evangelista, J. M. Turney, T. D. Crawford, C. D. Sherrill,
+    J. Chem. Phys. 152(18) 184108 (2020). https://doi.org/10.1063/5.0006002
+
+                            Additional Code Authors
+    E. T. Seidl, C. L. Janssen, E. F. Valeev, M. L. Leininger,
+    J. F. Gonthier, R. M. Richard, H. R. McAlexander, M. Saitow, X. Wang,
+    P. Verma, M. H. Lechner, and A. Jiang
+
+             Previous Authors, Complete List of Code Contributors,
+                       and Citations for Specific Modules
+    https://github.com/psi4/psi4/blob/master/codemeta.json
+    https://github.com/psi4/psi4/graphs/contributors
+    http://psicode.org/psi4manual/master/introduction.html#citing-psifour
+
+    -----------------------------------------------------------------------
+
+
+    Psi4 started on: Saturday, 29 October 2022 05:29AM
+
+    Process ID: 346
+    Host:       LAPTOP-VQ1QITOU
+    PSIDATADIR: /home/timgould/psi4conda/share/psi4
+    Memory:     500.0 MiB
+    Threads:    1
+    
+  ==> Input File <==
+
+--------------------------------------------------------------------------
+for d in (0.38, 0.50, 0.75, 1.0, 1.5, 2.0, 2.5, 3.0, 3.5, 4.0, 5.0):
+    F = open("h2_%.2f.mol"%(d), "w")
+    F.write("""0 1
+
+H  0.000  0.000 %6.3f
+@H 0.000  0.000  0.000
+H  0.000  0.000 %6.3f
+"""%(-d/2,d/2))
+    F.close()
+
+
+for d in (1.0, 1.5, 2.0, 2.5, 3.0, 3.5, 4.0):
+    F = open("lih_%.2f.xyz"%(d), "w")
+    F.write("""2
+
+Li  0.000  0.000 %6.3f
+H   0.000  0.000 %6.3f
+"""%(-d/2,d/2))
+    F.close()
+
+
+for d in (1.0, 1.5, 2.0, 2.5, 3.0, 3.5, 4.0):
+    F = open("heh_%.2f.mol"%(d), "w")
+    F.write("""-1 1
+
+He  0.000  0.000 %6.3f
+H   0.000  0.000 %6.3f
+"""%(-d/2,d/2))
+    F.close()
+--------------------------------------------------------------------------
+
+    Psi4 stopped on: Saturday, 29 October 2022 05:29AM
+    Psi4 wall time for execution: 0:00:00.00
+
+*** Psi4 exiting successfully. Buy a developer a beer!
