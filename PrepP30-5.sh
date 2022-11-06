@@ -15,7 +15,7 @@ for M in ALKBDE10_2_cao ALKBDE10_7_mgo BH76_1_n2 \
 			be ca he mg; do
     echo ${M}
     #rm Densities/Conv*${M}.mol*
-    ./Invert-Lieb.py -M ./P30-5/${M}.mol ${Opts}
+    #./Invert-Lieb.py -M ./P30-5/${M}.mol ${Opts}
 done
 
 # Open shell

@@ -182,7 +182,7 @@ np.savez("Densities/Conv_%s_%s_%s.npz"%(CoreFileName, Opts.Basis.lower(), Opts.D
          C_Ref = XHelp.C_Ref, epsilon_Ref = XHelp.epsilon_Ref,
          D_Ref = XHelp.D_Ref, D_DFA = XHelp.D,
          F_Ref = XHelp.F_Ref, F_HF_Ref = XHelp.F_HF_Ref, F0 = XHelp.F,
-         Ts = XHelp.Ts_Ref, Ts0 = Ts0,
+         Ts = XHelp.Ts_Ref, Ts0 = Ts0, TsF = XHelp.Ts_Direct,
          En_Iter = XHelp.En_Iter, Fs_Iter = XHelp.Fs_Iter,
 )
 

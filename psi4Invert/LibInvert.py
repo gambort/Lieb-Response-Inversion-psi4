@@ -750,7 +750,10 @@ class InversionHelper:
         if FsX-FsMax<0.:
             print("*** WARNING! Inconsistent Fs values ***")
             
-        print("FsMax = %9.4f, FsX = %9.4f, Ts0 = %9.4f Diff = %10.6f"%(FsMax, FsX, self.Ts0, FsX-FsMax))
+        print("FsMax = %9.4f [Ref.   ], FsX   = %9.4f [%7.4f]"\
+              %(FsMax, FsX, FsX-FsMax))
+        print("TsF   = %9.4f [%7.4f], Ts0   = %9.4f [%7.4f]"\
+              %(Ts, Ts-FsMax, self.Ts0, self.Ts0-FsMax))
 
         if IP is None: depsH = 0.
         else: depsH = -IP - eps0[self.kh]
@@ -770,6 +773,7 @@ class InversionHelper:
         self.D_Ref = np.einsum('k,pk,qk->pq', self.f,
                                self.C_Ref[:,:len(self.f)], self.C_Ref[:,:len(self.f)])
 
+        self.Ts_Direct = np.tensordot(self.D_Ref, self.T_ao)
 
         # Calculate the Fock potential from the reference density matrix
         self.VH_Ref = self.GetVH(D=self.D_Ref)
