@@ -57,7 +57,7 @@ parser.add_option('--NIter', type="int", default=1500,
                   help="Maximum inversion iterations")
 parser.add_option('--En_Exit', type="float", default=1e-7,
                   help="Terminate when Hartree energy is this small")
-parser.add_option('--a_Max', type="float", default=3.0,
+parser.add_option('--a_Max', type="float", default=1.5,
                   help="Maximum allowed step")
 
 parser.add_option('--eps_Cut', type="float", default=100.0,
@@ -113,31 +113,34 @@ Ts0 = np.tensordot(XHelp.T_ao, XHelp.D)
 
 RHelp = ReferenceHelper(Opts.M, Level=Opts.Reference)
 
-
-print(XHelp.f)
-
+# Calculate the reference density
 D_HF = XHelp.SymHelp.Dense(wfn_HF.Da().to_array()) + XHelp.SymHelp.Dense(wfn_HF.Db().to_array())
 F_HF = XHelp.SymHelp.Dense(wfn_HF.Fa().to_array())
 E_Ref, D_Ref = RHelp.CalculateReference(XHelp, Force=Opts.ForceCCSD, D_Size = D_HF)
 
+# Project it onto the ERAI basis
 q_Ref = np.tensordot(XHelp.ERIA, D_Ref, axes=((1,2),(0,1)))
-print(q_Ref)
+EH0 = np.dot(q_Ref, q_Ref)
 
+# Zero all entries that don't have a charge (i.e. that are not of S-type)
 q_Ref[np.abs(XHelp.QA)<1e-6]=0.
-print(q_Ref)
 
+# Set D_Ref to None if changed by more than 0.01 Ha
+if np.abs(np.dot(q_Ref, q_Ref)-EH0)>1e-5: D_Ref = None
+
+# Average the occupation factors where they should be degenerate
 f = np.hstack((XHelp.f, [0,0,0,0,0,0,0,0,0,0]))
 f[2:5] = np.mean(f[2:5])
 f[6:9] = np.mean(f[6:9])
 
+# Update the helper
 XHelp.SetOcc(f[f>0.])
-#XHelp.NOcc = len(XHelp.f)
 
+# Set the Fermi-Amaldi potential and solve the Fock
 F0 = XHelp.H_ao + (1-1/np.sum(f))*np.tensordot(q_Ref, XHelp.ERIA, axes=((0,),(0,)))
 eps0, C0 = XHelp.SymHelp.SolveFock(F0, XHelp.S_ao)
 
-print(eps0)
-
+# Update the helper object
 XHelp.F = F0
 XHelp.epsilon = eps0
 XHelp.C0 = C0

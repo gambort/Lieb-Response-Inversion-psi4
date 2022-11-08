@@ -33,7 +33,7 @@ for M in BH76_1_n2ohts BH76_1_oh BH76_9_hf2ts \
 		       n p; do
     echo ${M}
     #rm Densities/Conv*${M}.mol*
-    ./Invert-Lieb.py -M ./P30-5/${M}.mol ${Opts}
+    #./Invert-Lieb.py -M ./P30-5/${M}.mol ${Opts}
 done
 	 
 # NOTE W4-11_114_c-hooo does not work at ground state
@@ -43,9 +43,13 @@ echo '***************************************************************'
 XOpts="--NIter 2000 --ForceCCSD --W_Cut 1.1 --a_Max 0.5"
 for S in BH76_1_n2 G2RC_20_34 BH76_1_oh; do
     echo Special ${S}
-    ./Invert-Lieb.py -M ./P30-5/${S}.mol ${Opts} ${XOpts} --EThermal 0.010
+    #./Invert-Lieb.py -M ./P30-5/${S}.mol ${Opts} ${XOpts} --EThermal 0.010
 done
-for S in o f s p cl; do
+echo '***************************************************************'
+echo DOING ATP<S
+echo '***************************************************************'
+XOpts="--NIter 2000 --ForceCCSD --W_Cut 1.1 --a_Max 1.5 --NoSym"
+for S in b c n o f  al si p s cl; do
     echo Special ${S}
     ./Atom.py -M ./P30-5/${S}.mol ${Opts} ${XOpts} 
 done

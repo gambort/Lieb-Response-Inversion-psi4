@@ -489,7 +489,7 @@ class InversionHelper:
 
         # Thermal overrides
         if not(self.Params['EThermal'] is None) \
-               and not(self.Params['EThermal'] < 1e-3):
+               and not(self.Params['EThermal'] < 1e-4):
             N_Ref = np.sum(f)
             f = ThermalOcc(epsilon, self.Params['EThermal'], N_Ref)
 
@@ -600,6 +600,12 @@ class InversionHelper:
 
     def InvertLiebResponse(self, D_Ref, q_Ref=None,
                            F0 = None, IP=None):
+        # D_Ref is None uses the current D but switches off Lieb max
+        if D_Ref is None:
+            D_Ref = self.Da
+            UseFsMax = False
+        else: UseFsMax = True
+            
         # This over-rides D_Ref if provided
         if q_Ref is None:
             q_Ref = self.GetVHA(D=D_Ref)
@@ -643,9 +649,9 @@ class InversionHelper:
             self.InitResponse(f, eps0, C0)
 
         a = 0.
-        EnMin = 1e10
-        F0Min, C0Min, vAMin = None, None, None
         FsMax = -1e10
+        EnMin =  1e10
+        F0Opt, vAOpt = None, None
 
         self.En_Iter = np.zeros((self.Params['NIter']))
         self.Fs_Iter = np.zeros((self.Params['NIter']))
@@ -655,17 +661,21 @@ class InversionHelper:
             
             self.En_Iter[iteration] = En
 
-            Fs = np.dot(f, eps0[:len(f)]) - np.vdot(V0, D_Ref)
+            if UseFsMax:
+                Fs = np.dot(f, eps0[:len(f)]) - np.vdot(V0, D_Ref)
+            else:
+                Fs = np.tensordot(D0, self.T_ao)
 
             self.Fs_Iter[iteration] = Fs
 
-            if Fs>FsMax:
+            # Maximal Fs if UseFsMax otherwise minimal En
+            if (Fs>FsMax and UseFsMax) \
+               or (En<EnMin and not(UseFsMax)):
                 iterMin = iteration
                 EnMin = En
-                F0Min = F0*1.
-                C0Min = C0*1.
-                vAMin = vA*1.
                 FsMax = Fs*1.
+                F0Opt = F0*1.
+                vAOpt = vA*1.
 
             if (iteration<self.Params['NAlwaysReport']) \
                or (iteration%self.Params['NReport']==0):
@@ -717,26 +727,32 @@ class InversionHelper:
                 SC0 = np.dot(self.S_ao, C0)
                 F0 = np.einsum('pk,qk,k->pq', SC0, SC0, epsr)
 
-
-        if iteration>50:
-            iX0 = max(iteration-100,50)
-            iXF = min(iX0+100, iteration)       
-            pX = np.polyfit(np.exp(-np.arange(iX0, iXF)/166), self.Fs_Iter[iX0:iXF], 1)
-            FsX = np.polyval(pX, 0.)
+        if UseFsMax:
+            if iteration>50:
+                iX0 = max(iteration-100,50)
+                iXF = min(iX0+100, iteration)       
+                pX = np.polyfit(np.exp(-np.arange(iX0, iXF)/166), self.Fs_Iter[iX0:iXF], 1)
+                FsX = np.polyval(pX, 0.)
+            else:
+                FsX = FsMax
         else:
-            FsX = FsMax
+            kMin = np.argmin(self.En_Iter)
+            FsX = self.Fs_Iter[kMin]
 
 
         self.Ts_Extrap = FsX
 
-        F0Min, eps0, C0, D0, q, En, f = QSolve(F0Min)
+        F0Opt, eps0, C0, D0, q, En, f = QSolve(F0Opt)
         if not(self.Params['EThermal'] is None) \
            and not(self.Params['EThermal'] < 1e-3):
             self.f = f
             self.NOcc = len(f[f>1e-7])
-        
-        Fs = np.dot(f, eps0[:len(f)]) - np.vdot(V0, D_Ref)
+            
         Ts = np.vdot(self.T_ao, D0)
+        if UseFsMax:
+            Fs = np.dot(f, eps0[:len(f)]) - np.vdot(V0, D_Ref)
+        else:
+            Fs = Ts
 
         # Dipole
         X = [np.vdot(x, D0-D_Ref) for x in self.Di_ao]
@@ -745,7 +761,7 @@ class InversionHelper:
 
         if self.Report>-1:
             print("%4d | %8.4f %8.4f | %8.4f | %8.4f | %10.7f"\
-                  %(iterMin, Fs, Ts,  DV,  np.dot(vAMin, vAMin), EnMin))
+                  %(iterMin, Fs, Ts,  DV,  np.dot(vAOpt, vAOpt), EnMin))
 
         if FsX-FsMax<0.:
             print("*** WARNING! Inconsistent Fs values ***")
@@ -759,8 +775,8 @@ class InversionHelper:
         else: depsH = -IP - eps0[self.kh]
 
         self.Ts_Ref = Fs
-        self.UpdateFRef(F0Min + depsH * self.S_ao)
-        self.vA_Ref = vAMin*1.
+        self.UpdateFRef(F0Opt + depsH * self.S_ao)
+        self.vA_Ref = vAOpt*1.
 
         self.D_In = D_Ref*1.
         self.F_HF_Ref = self.H + self.VH_Ref + self.Vx_Ref

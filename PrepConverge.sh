@@ -1,7 +1,7 @@
 for M in ketene ethylene glyoxal butadiene benzene ; do # benzoquinone
     echo ${M}
-    ./Invert-Lieb.py -M ./SysDB/${M}.xyz --ForceIP --CCSD --Basis cc-pvdz --CalcPot
-    ./Invert-Lieb.py -M ./SysDB/${M}.xyz --ForceIP --Basis cc-pvtz
+    ./Invert-Lieb.py -M ./SysDB/${M}.xyz --CCSD --Basis cc-pvdz --CalcPot
+    ./Invert-Lieb.py -M ./SysDB/${M}.xyz --Basis cc-pvtz
 done
 
 for B in cc-pvdz cc-pvtz cc-pvqz; do
