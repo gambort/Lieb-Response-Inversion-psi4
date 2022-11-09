@@ -1,0 +1,10 @@
+cff-version: 1.2.0
+message: "If you use this software, please cite it as below."
+authors:
+  - family-names: Gould
+    given-names: Tim
+    orcid: https://orcid.org/0000-0002-7191-9124
+title: "Lieb-response inverter"
+version: 0.90
+doi: 
+date-released: 2022-11-09
