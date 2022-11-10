@@ -19,7 +19,8 @@ Invert-Lieb.py --help
 
 (gives the full list of options)
 
-The other codes, Atom.py and Frac.py do more specialized jobs and are
+* See the shell scripts for examples of usage.
+
+* The other codes, Atom.py and Frac.py do more specialized jobs and are
 for expert users only.
 
-* See the shell scripts for examples of usage.
