@@ -1,0 +1,2 @@
+These files are used to generate the figures. They should be run in the top-level
+directory but are provided here to avoid confusion.

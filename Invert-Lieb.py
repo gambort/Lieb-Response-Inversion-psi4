@@ -38,6 +38,9 @@ parser.add_option('--CCSD', default=False, action="store_true",
 parser.add_option('--Reference', type="string", default="scf",
                   help="Reference density to use (e.g. scf, mp2. ccsd)")
 
+parser.add_option('--SOnly', default=False, action="store_true",
+                  help="Restrict the potential to S only (not implemented)")
+
 
 parser.add_option('--Freeze', default=False, action="store_true",
                   help="Freeze the core")
@@ -75,6 +78,9 @@ psi4.set_options({
     "basis": Opts.Basis,
     "reference": "rhf",
     "freeze_core": Opts.Freeze,
+    "scf_type": "df",
+    #"cc_type": "df",
+    #"df_ints": "save",
 })
 
 if Opts.Safe:
@@ -129,6 +135,7 @@ XHelp.SetInversionParameters(
     a_Max = Opts.a_Max,
     W_Cut = Opts.W_Cut,
     EThermal = Opts.EThermal,
+    SOnly = Opts.SOnly,
 )
 
 print("Initialising the important pairs")
@@ -141,6 +148,9 @@ if Opts.M is None: quit()
 CoreFileName = os.path.basename(Opts.M)
 if not(Opts.Reference.lower()=="ccsd"):
     CoreFileName += "_"+Opts.Reference.upper()
+if (Opts.a_Max > 3.):
+    CoreFileName += "_am%.1f"%(Opts.a_Max)
+    
 
 if Opts.Calcdv and not(Opts.DFA.upper() in ("HF", "SCF")):
     PHelp = PotentialHelper(XHelp, eta=1e-5)

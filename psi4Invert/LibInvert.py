@@ -397,6 +397,7 @@ class InversionHelper:
             a_Max = 3., # Convergence parameters
             W_Cut = 0.50, W_Most = 0.90, En_Most = 1e-9, # Acceleration parameters
             EThermal = None, # Set to about 10 mHa for better convergence of radicals
+            SOnly = False, # Restrict to S-type basis functions
             LevelShift = None,
         )
 
@@ -627,6 +628,9 @@ class InversionHelper:
             q0 = self.GetVHA(D=D0)
             
             q = q0 - q_Ref
+            # Zero non-S if required
+            if self.Params['SOnly']: q[np.abs(self.QA)<1e-5]=0.
+            
             En = 0.5 * np.dot(q, q)
 
             return F, eps0, C0, D0, q, En, f
