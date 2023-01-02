@@ -89,6 +89,8 @@ F_HF = XHelp.SymHelp.Dense(wfn_HF.Fa().to_array())
 
 E0_Ref, D0_Ref = RHelp.CalculateReference(XHelp, Force=Opts.ForceCCSD, D_Size = D_HF)
 
+psi4.core.clean()
+
 Mol = psi4.geometry(CationStr)
 if Mol.multiplicity()>1:
     psi4.set_options({"reference": "uhf"})

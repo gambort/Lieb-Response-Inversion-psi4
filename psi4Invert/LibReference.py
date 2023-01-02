@@ -46,8 +46,8 @@ class ReferenceHelper:
         if (Force is True) or not(Basis in self.Data[self.ID][self.Level]):
             print("Computing %s density"%(self.Level.upper()))
             try:
-                _, wfn_Ref = psi4.gradient(self.Level, return_wfn=True)
-                #_, wfn_Ref = psi4.properties(self.Level, return_wfn=True)
+                #_, wfn_Ref = psi4.gradient(self.Level, return_wfn=True)
+                _, wfn_Ref = psi4.properties(self.Level, return_wfn=True, properties=["dipole"])
             except:
                 print("Failed to produce CCSD density")
                 quit()

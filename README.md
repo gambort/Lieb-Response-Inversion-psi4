@@ -6,7 +6,7 @@ Requires psi4 (tested on version 1.6)
 The main code is Invert-Lieb, which can (in theory) invert a HF
 density (for testing purposes) or CCSD density (--CCSD tag) for any
 molecule psi4 can converge. The default options seem to work pretty
-well most of the time.
+well except in cases of high symmetry.
 
 Run as:
 
@@ -23,4 +23,8 @@ Invert-Lieb.py --help
 
 * The other codes, Atom.py and Frac.py do more specialized jobs and are
 for expert users only.
+
+* Note, the Invert-Lieb.py code is provided to illustrate the working
+of the library psi4Dens.LibInvert (e.g. see Frac.py for different use)
+
 

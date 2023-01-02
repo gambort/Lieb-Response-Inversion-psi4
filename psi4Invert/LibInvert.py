@@ -37,7 +37,9 @@ def GetDensityFit(wfn, basis, mints, aux_basis=None):
     if aux_basis is None:
         aux_basis = psi4.core.BasisSet.build\
             (wfn.molecule(), "DF_BASIS_SCF", "",
-             "RIFIT", basis.name())
+             "RIFIT", basis.name(),
+             #"DECON", basis.name(),
+            )
         
     zero_basis = psi4.core.BasisSet.zero_ao_basis_set()
     SERIApq = np.squeeze(mints.ao_eri(aux_basis, zero_basis, basis, basis))
@@ -99,6 +101,8 @@ def NiceMat(X):
 
 # Handle PBE0_XX calculations
 def GetDFA(DFA):
+    eta = 1e-8
+    
     if DFA[:5].lower()=="pbe0_":
         X = DFA.split('_')
         alpha = float(X[1])/100.
@@ -109,7 +113,75 @@ def GetDFA(DFA):
             'x_functionals': {"GGA_X_PBE": {"alpha":1.-alpha, }},
             'c_functionals': {"GGA_C_PBE": {"alpha":f_c, }},
             'x_hf': {"alpha":alpha, },
+        }
+    elif DFA[:5].lower()=="wpbe_":
+        X = DFA.split('_')
+        alpha = float(X[1])/100.
+        if len(X)>2: omega = float(X[2])
+        else: omega = 0.3
+        if omega>0.:
+            return {
+                'name':DFA,
+                'x_functionals': {"GGA_X_HJS_PBE": {"alpha": 1.-alpha, "omega": omega}},
+                'c_functionals': {"GGA_C_PBE": {"alpha": 1., }},
+                'x_hf': {"alpha": alpha, "beta": 1.-alpha, "omega": omega},
             }
+        else:
+            omega = -omega
+            return {
+                'name':DFA,
+                'x_functionals': {"GGA_X_HJS_PBE": {"alpha": 1.-alpha, "omega": omega},
+                                  "GGA_X_PBE": {"alpha": -alpha} },
+                'c_functionals': {"GGA_C_PBE": {"alpha": 1., }},
+                'x_hf': {"alpha": alpha, "beta": -alpha, "omega": omega},
+            }
+
+    elif DFA.lower()=="lpbe":
+        return {
+            'name': 'LPBE',
+            'x_functionals': {
+                "LDA_X": {"alpha": -1/3,},
+                "GGA_X_PBE": {"alpha": 4/3,},
+            },
+            'c_functionals': {"GGA_C_PBE": {"alpha":1.,}},
+            'x_hf': {'alpha': 0., },
+        }
+    elif DFA.lower()[:5]=="svwn_":
+        x = float(DFA.split('_')[1])
+        return {
+            'name': 'LSCE',
+            'x_functionals': {"LDA_X": {"alpha":x,}},
+            'c_functionals': {"LDA_C_VWN_RPA": {"alpha":1.,}},
+            'x_hf': {'alpha': 0., },
+        }
+    elif DFA.lower()=="svwnp":
+        return {
+            'name': 'LSCE',
+            'x_functionals': {"LDA_X": {"alpha":1.1,}},
+            'c_functionals': {"LDA_C_VWN_RPA": {"alpha":1.,}},
+            'x_hf': {'alpha': 0., },
+        }
+    elif DFA.lower()=="lsce":
+        return {
+            'name': 'LSCE',
+            'x_functionals': {"LDA_X": {"alpha":1.95,}},
+            'c_functionals': {"LDA_C_VWN_RPA": {"alpha":0.000001,}},
+            'x_hf': {'alpha': 0., },
+        }
+    elif DFA.lower()=="lo":
+        return {
+            'name': 'LO',
+            'x_functionals': {"LDA_X": {"alpha":2.15,}},
+            'c_functionals': {"LDA_C_VWN_RPA": {"alpha":eta,}},
+            'x_hf': {'alpha': 0., },
+        }
+    elif DFA.lower()=="none":
+        return {
+            'name': 'LO',
+            'x_functionals': {"LDA_X": {"alpha": eta,}},
+            'c_functionals': {"LDA_C_VWN_RPA": {"alpha": eta,}},
+            'x_hf': {'alpha': 0., },
+        }
     else:
         return DFA
 
@@ -316,10 +388,15 @@ def ThermalOcc(E, Eth, NOcc, Cut=50, muOnly=False):
             break
         
         mu -= (np.sum(f)-NOcc)/np.sum(df)
-        
 
-    if muOnly: return mu0
-    return f[f>1e-6]
+    if muOnly: return mu
+
+    ft = f[f>1e-6]
+    if np.abs(np.sum(ft)-NOcc)>1e-5:
+        ft = 2.*np.ones((NI+1,))
+        ft[-1] = fRem
+    
+    return ft
 
 #################################################################################################
 # This is the main Inversion code
@@ -344,6 +421,7 @@ class InversionHelper:
         self.epsilon = self.SymHelp.epsilon()
         self.C = self.SymHelp.C()
 
+
         basis = wfn.basisset()
         self.basis = basis
         self.nbf = self.wfn.nmo() # Number of basis functions
@@ -361,7 +439,24 @@ class InversionHelper:
         if np.mean(X**2)>1e-8:
             print("Inconsistent ao expansions")
             quit()
-        
+
+        # These are used for hybrid calculations
+        self.VPot = wfn.V_potential() # Note, this is a VBase class
+        try:
+            self.DFA = self.VPot.functional()
+            self.alpha = self.DFA.x_alpha()
+        except:
+            # Hartree Fock
+            self.DFA = None
+            self.VPot = None
+            self.alpha = 1.
+        if self.alpha>0.:
+            print("="*72)
+            print("Warning! You are starting from a hybrid calculation")
+            print("alpha = %.3f"%(self.alpha))
+            print("Be very cautious in how you intertpret answers")
+            print("="*72)
+            
         self.ERIA, self.SERIAB, self.SAB, self.QA, self.aux_basis \
             = GetDensityFit(self.wfn, self.basis, self.mints, aux_basis)
 
@@ -381,6 +476,7 @@ class InversionHelper:
         if self.SymHelp.NSym>1:
             self.SymHelp.SymReport(self.kh)
 
+        self.FMF_Init = np.tensordot(self.D, self.H_ao) + self.GetEH(self.D)
 
         if self.Report>0:
             print("f   = %s"%(NiceArr(self.f[max(0,self.kh-2):min(self.NBas,self.kl+3)])))
@@ -394,8 +490,10 @@ class InversionHelper:
             En_Exit = 1e-5, NIter = 100, # Iteration parameters
             NAlwaysReport = 5, # Always show this many first
             NReport = 20, # Report every this steps
+            NExchange = 1, # Update non-local exchange operator this often
             a_Max = 3., # Convergence parameters
             W_Cut = 0.50, W_Most = 0.90, En_Most = 1e-9, # Acceleration parameters
+            ReponseEvery = 1, # Update response this often
             EThermal = None, # Set to about 10 mHa for better convergence of radicals
             SOnly = False, # Restrict to S-type basis functions
             LevelShift = None,
@@ -643,6 +741,12 @@ class InversionHelper:
 
         D00 = 1.*D0
         self.Ts0 = np.tensordot(self.T_ao, D00)
+        self.Vext0 = np.tensordot(self.V_ao, D00)
+
+        # For non-local exchange hybrids
+        if self.alpha>0.:
+            Vx_0 = self.GetVx_C(C0)
+            UseFsMax = False # Always use density for non-local exchange
         
         F0 = self.F * 1.
         V0 = self.F - self.T_ao
@@ -661,12 +765,20 @@ class InversionHelper:
         self.Fs_Iter = np.zeros((self.Params['NIter']))
             
         for iteration in range(self.Params['NIter']):
+            # For non-local exchange hybrids
+            if self.alpha>0. and (iteration % self.Params['NExchange'])==0:
+                Vx_N = self.GetVx_C(C0) 
+                F0 += self.alpha*(Vx_N - Vx_0)
+                Vx_0 = Vx_N
+
             F0, eps0, C0, D0, q, En, f = QSolve(F0)
             
             self.En_Iter[iteration] = En
 
             if UseFsMax:
                 Fs = np.dot(f, eps0[:len(f)]) - np.vdot(V0, D_Ref)
+            elif self.alpha>0.:
+                Fs = np.dot(f, eps0[:len(f)]) - np.vdot(V0-self.alpha*Vx_0, D_Ref)
             else:
                 Fs = np.tensordot(D0, self.T_ao)
 
@@ -702,11 +814,13 @@ class InversionHelper:
                 
             if En < self.Params['En_Most']:
                 X = self.GetResponse(f, eps0, C0, Mode='Most')
-            else:
+            elif (iteration%self.Params['ReponseEvery'])==0:
                 X = self.GetResponse(f, eps0, C0)
+                X2 = X.dot(X)
 
             A1 = q.dot(X).dot(q)
-            A2 = q.dot(X).dot(X).dot(q)
+            A2 = q.dot(X2).dot(q)
+
 
             if A1**2>2.*A2*En:
                 a = (-A1 + np.sqrt(A1**2 - 2*A2*En)) / (2*A2)
@@ -730,6 +844,10 @@ class InversionHelper:
 
                 SC0 = np.dot(self.S_ao, C0)
                 F0 = np.einsum('pk,qk,k->pq', SC0, SC0, epsr)
+
+
+        if En>1e-6:
+            print("Final Diff problematic - %.3f [%.1f kcal]"%(En, En*627.5))
 
         if UseFsMax:
             if iteration>50:
@@ -755,19 +873,20 @@ class InversionHelper:
         Ts = np.vdot(self.T_ao, D0)
         if UseFsMax:
             Fs = np.dot(f, eps0[:len(f)]) - np.vdot(V0, D_Ref)
+        elif self.alpha>0.:
+            Fs = np.dot(f, eps0[:len(f)]) - np.vdot(V0-self.alpha*Vx_0, D_Ref)
         else:
             Fs = Ts
 
         # Dipole
         X = [np.vdot(x, D0-D_Ref) for x in self.Di_ao]
         DV = np.sqrt(X[0]**2 + X[1]**2 + X[2]**2)
-
-
+        
         if self.Report>-1:
             print("%4d | %8.4f %8.4f | %8.4f | %8.4f | %10.7f"\
                   %(iterMin, Fs, Ts,  DV,  np.dot(vAOpt, vAOpt), EnMin))
 
-        if FsX-FsMax<0.:
+        if UseFsMax and FsX-FsMax<0.:
             print("*** WARNING! Inconsistent Fs values ***")
             
         print("FsMax = %9.4f [Ref.   ], FsX   = %9.4f [%7.4f]"\
@@ -775,18 +894,37 @@ class InversionHelper:
         print("TsF   = %9.4f [%7.4f], Ts0   = %9.4f [%7.4f]"\
               %(Ts, Ts-FsMax, self.Ts0, self.Ts0-FsMax))
 
+
+
         if IP is None: depsH = 0.
         else: depsH = -IP - eps0[self.kh]
 
-        self.Ts_Ref = Fs
+        if UseFsMax:
+            self.Ts_Ref = Fs
+        else:
+            self.Ts_Ref = Ts
         self.UpdateFRef(F0Opt + depsH * self.S_ao)
         self.vA_Ref = vAOpt*1.
 
         self.D_In = D_Ref*1.
         self.F_HF_Ref = self.H + self.VH_Ref + self.Vx_Ref
 
+        self.FMF0 = np.tensordot(D00, self.H_ao) + self.GetEH(D00)
+        self.FMF_Ref = np.tensordot(self.D_Ref, self.H_ao) + self.GetEH(self.D_Ref)
+        
+        print("Ts + EExt + EH = %10.4f @ Ref, = %10.4f @ Initial, Diff = %7.4f"\
+              %(self.FMF_Ref, self.FMF_Init, self.FMF_Ref - self.FMF_Init))
+
         return F0
 
+    def GetVx_C(self, C):
+        Vx = 0.
+        for k in range(self.NOcc):
+            ta = np.tensordot(self.ERIA, C[:,k], axes=((2,),(0,)))
+            vv = np.tensordot(ta, ta, axes=((0,), (0,)))
+            Vx -= self.f[k]/2. * vv
+        return Vx
+    
     def UpdateFRef(self, F):
         self.F_Ref = F * 1.
         self.epsilon_Ref, self.C_Ref = self.SymHelp.SolveFock(self.F_Ref, self.S_ao)
@@ -797,14 +935,8 @@ class InversionHelper:
 
         # Calculate the Fock potential from the reference density matrix
         self.VH_Ref = self.GetVH(D=self.D_Ref)
-
-        # Calculate Vx
-        self.Vx_Ref = 0.
-        for k in range(self.NOcc):
-            ta = np.tensordot(self.ERIA, self.C_Ref[:,k], axes=((2,),(0,)))
-            vv = np.tensordot(ta, ta, axes=((0,), (0,)))
-            self.Vx_Ref -= self.f[k]/2. * vv
-
+        # Calculate the Fock exchange from the reference density matrix
+        self.Vx_Ref = self.GetVx_C(self.C_Ref)
 
         self.EvH_Ref = np.tensordot(self.D_Ref, (self.VH_Ref))
         self.Evx_Ref = np.tensordot(self.D_Ref, (self.Vx_Ref))
@@ -821,6 +953,29 @@ class InversionHelper:
                   %(self.epsilon_Ref[self.kh], self.epsilon_Ref[self.kh]*eV,
                     self.epsilon_Ref[self.kl], self.epsilon_Ref[self.kl]*eV,))
 
+    def GetVxcFactor(self, f_Cut = 1e-5, Pre_Cut = 1e-5):
+        Pairs = []
+        for i in range(len(self.f)):
+            fi = self.f[i]
+            for a in range(i+1, self.NBas):
+                if a<len(self.f): fa = self.f[a]
+                else: fa = 0.
+
+                if np.abs(fi-fa)>f_Cut:
+                    Pairs += [(i,a,fi-fa)]
+
+        Fxc = self.F_Ref - self.H_ao - self.VH_Ref
+        DF = self.F_Ref - self.F
+        V = 0.
+        for i,a, ff in Pairs:
+            Pre = -2.*ff/(self.epsilon_Ref[i] - self.epsilon_Ref[a])
+            if np.abs(Pre)>Pre_Cut:
+                Pia = self.C_Ref[:,i].dot(DF).dot(self.C_Ref[:,a])
+                Qia = self.C_Ref[:,i].dot(Fxc).dot(self.C_Ref[:,a])
+                V += Pre * Pia * Qia
+
+        print("VxcFactor = %.4f"%(V))
+        return V
 
     def GetTs(self, NWarm=100, NLast=None):
         Fs = self.Fs_Iter[self.Fs_Iter>0.]
@@ -862,7 +1017,10 @@ class PotentialHelper:
         self.NDFBas = self.XHelp.ERIA.shape[0]
         self.NOcc = self.XHelp.NOcc
         self.NUsed = min(self.NOcc + NExtra, self.NBas)
-        self.eta = eta
+
+        self.DoScan = (eta<0)
+        self.Scan_eta = np.abs(eta)
+        self.eta = np.abs(eta)
         
         if (xyz is None) or (w is None):
             xyz, w, phiD = GetDensities(None, wfn=XHelp.wfn, return_xyz=True)
@@ -915,25 +1073,31 @@ class PotentialHelper:
             self.Vij[K] = Pre / 2. * (Vsij[i,j] + Vsij[j,i])
             if i==j: self.Sij[K] = 1.
 
+        self.UpdateInverses(Extend = Extend)
+
+    def UpdateInverses(self, Extend = False, eta = None):
+        if not(eta is None): self.eta = eta
         if Extend:
             #S1 = (self.Aij[:,:self.NIJ].T).dot(self.Aij)
             #self.SP = S1.dot(S1.T)
             #self.SP += self.eta*np.diag(np.diag(self.SP)) # Regularize
             #self.SPI = la.inv(self.SP).dot(S1)
-            self.SP = (self.Aij.T).dot(self.Aij)
+            self.SP0 = (self.Aij.T).dot(self.Aij)
             #self.SP += self.eta*np.diag(np.diag(self.SP)) # Regularize
-            self.SP += self.eta*np.eye(self.SP.shape[0])
+            self.SP = self.SP0 + self.eta*np.eye(self.SP0.shape[0])
 
             self.SPI = la.inv(self.SP)
         else:
-            self.SP = (self.Aij.T).dot(self.Aij)
+            self.SP0 = (self.Aij.T).dot(self.Aij)
             #self.SP += self.eta*np.diag(np.diag(self.SP)) # Regularize
-            self.SP += self.eta*np.eye(self.SP.shape[0])
+            self.SP = self.SP0 + self.eta*np.eye(self.SP0.shape[0])
 
             self.SPI = la.inv(self.SP)
 
         self.CP  = np.dot(self.SPI, self.Vij)
         self.CSP = np.dot(self.SPI, self.Sij)
+
+        return np.linalg.norm(self.SP0.dot(self.CP) - self.Vij)/self.Vij.shape[0]
 
         
     def Reconstruct(self,
@@ -957,7 +1121,7 @@ class PotentialHelper:
         Veff = F - H0
 
         N_Ref = np.vdot(self.XHelp.S_ao, self.XHelp.D_Ref)
-        Hole = N_Ref - 1.
+        Hole = N_Ref - 1. + self.XHelp.alpha
         
         def QReport(V):
             CC = self.XHelp.C_Ref[:,max(self.NOcc-5,0):(self.NOcc+1)]
@@ -985,8 +1149,24 @@ class PotentialHelper:
         C = XHelp.C_Ref[:,:self.NUsed]
         phiC = np.dot(self.phiD, C)
         rho = np.einsum('k,xk->x', XHelp.f, phiC[:,:len(XHelp.f)]**2)
+        rho_u = np.einsum('k,xk->x', np.minimum(XHelp.f, 1.), phiC[:,:len(XHelp.f)]**2)
         
         self.UpdateMatrices(V=Veff, Extend=Extend) # Eventually we can make this quicker by caching
+
+        if self.DoScan:
+            print("Doing scan")
+            eta_ = 10**np.linspace(-10, 5, 16)
+            R_ = 0.*eta_
+            K0 = 0
+            for K, eta in enumerate(eta_):
+                R_[K] = self.UpdateInverses(Extend=Extend, eta=eta)
+                if R_[K]<self.Scan_eta:
+                    K0 = K
+                    print("K0 = %d, Val = %.3e, Delta = %.3e"%(K0, R_[K], R_[K]-R_[K-1]))
+            eta = eta_[K0]
+            print("Setting regularization parameter to 10^%.1f"%(np.log10(eta)))
+            self.UpdateInverses(Extend=Extend, eta=eta)
+                
 
         rhos = 0.
         rhoc = 0.
@@ -1006,7 +1186,7 @@ class PotentialHelper:
             self.CP += F*self.CSP
             print("eps_H = %.4f -> eps_H = %.4f [shift = %.3f]"%(epsH_Ref, epsH_Ref + F, F))
 
-            
+
         if Debug:
             NUsed = self.NUsed
             NUsedLUMO = max(self.NUsed, self.NOcc+1)
@@ -1033,7 +1213,7 @@ class PotentialHelper:
 
             epsDp, _ = self.XHelp.SymHelp.SolveFock(H0+V0 + VeffD, XHelp.S_ao)
             
-            print("error in density = %.7f"%( np.dot(self.w, np.abs(rho-rho_Ref)) ))
+            print("|rho-rhob| error = %.7f"%( np.dot(self.w, np.abs(rho-rho_Ref)) ))
             print("eps0 : %s"%(QArr(XHelp.epsilon )))
             print("eps  : %s"%(QArr(XHelp.epsilon_Ref )))
             print("eps  : %s"%(QArr(eps )))
@@ -1044,12 +1224,12 @@ class PotentialHelper:
             print("Weights: %.3f"%( np.dot(self.CP, self.Sij[:len(self.CP)]) ))
             print("<const> = %.4f"%(np.dot(self.w, rhoc)))
 
-            
+        # Compute the effective potential vxc
+        self.FeffD = XHelp.GetVH(q=self.Aij[:,:len(self.CP)].dot(self.CP))
 
         if ForceUpdate:
             # Compute Vs and F from the density-fitted potential
-            VeffD = XHelp.GetVH(q=self.Aij[:,:len(self.CP)].dot(self.CP))
-            FD = H0 + V0 + VeffD
+            FD = H0 + V0 + self.FeffD
 
             # Project onto the orbitals
             CAll = XHelp.C_Ref
@@ -1066,6 +1246,7 @@ class PotentialHelper:
             XHelp.UpdateFRef(FD)
         
         self.rho = rho
+        self.rho_u = rho_u
         self.rhos = rhos
         self.rhoc = rhoc
 

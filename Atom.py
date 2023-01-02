@@ -92,7 +92,7 @@ H 1 3.0
 """
 
 print("="*72)
-print("Running %s @ %s"%(Opts.M, Opts.Basis))
+print("Running %s @ %s starting from %s"%(Opts.M, Opts.Basis, Opts.DFA))
 print("="*72)
 
 if not(Opts.M is None):
@@ -132,6 +132,7 @@ if np.abs(np.dot(q_Ref, q_Ref)-EH0)>1e-5: D_Ref = None
 f = np.hstack((XHelp.f, [0,0,0,0,0,0,0,0,0,0]))
 f[2:5] = np.mean(f[2:5])
 f[6:9] = np.mean(f[6:9])
+f[10:15] = np.mean(f[10:15])
 
 # Update the helper
 XHelp.SetOcc(f[f>0.])
@@ -152,6 +153,8 @@ XHelp.SetInversionParameters(
     NAlwaysReport=3, NReport = min(100,int(np.ceil(Opts.NIter/5))),
     a_Max = Opts.a_Max,
     W_Cut = Opts.W_Cut,
+    SOnly = True,
+    #EThermal = 0.002,
 )
 
 print("Initialising the important pairs")
@@ -178,6 +181,8 @@ if Opts.Calcdv and not(Opts.DFA.upper() in ("HF", "SCF")):
     )
     print("="*72)    
     
+# Calculate the linear response error factor
+VxcFactor = XHelp.GetVxcFactor()
 
 np.savez("Densities/Conv_%s_%s_%s.npz"%(CoreFileName, Opts.Basis.lower(), Opts.DFA.lower()),
          xyz_Nuc = Mol.geometry().to_array(dense=True),
@@ -185,7 +190,9 @@ np.savez("Densities/Conv_%s_%s_%s.npz"%(CoreFileName, Opts.Basis.lower(), Opts.D
          C_Ref = XHelp.C_Ref, epsilon_Ref = XHelp.epsilon_Ref,
          D_Ref = XHelp.D_Ref, D_DFA = XHelp.D,
          F_Ref = XHelp.F_Ref, F_HF_Ref = XHelp.F_HF_Ref, F0 = XHelp.F,
+         FMF_Ref = XHelp.FMF_Ref, FMF0 = XHelp.FMF_Init,
          Ts = XHelp.Ts_Ref, Ts0 = Ts0, TsF = XHelp.Ts_Direct,
+         VxcFactor = VxcFactor,
          En_Iter = XHelp.En_Iter, Fs_Iter = XHelp.Fs_Iter,
 )
 

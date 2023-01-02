@@ -9,6 +9,7 @@ from psi4Invert.LibReference import *
 import itertools
 import os
 
+import time
 
 from  optparse import OptionParser
 
@@ -24,6 +25,9 @@ parser.add_option('--DFA', type="string", default="svwn",
                   help="Specify the DFA")
 parser.add_option('--Basis', type="string", default="cc-pvdz",
                   help="Specify the basis set")
+
+parser.add_option('--NoDF', action="store_true", default=False,
+                  help="Run initial calculations without density fitting")
 
 parser.add_option('--NoSym', dest="Sym", default=True, action="store_false",
                   help="Force symmetry to be C1")
@@ -57,6 +61,8 @@ parser.add_option('--CalcPotc', default=False, action="store_true",
                   help="Calculate the correlation potential (should use DFA=pbe0_100)")
 parser.add_option('--Calcdv', default=False, action="store_true",
                   help="Calculate dv only")
+parser.add_option('--PotReg', type="float", default=1e-5,
+                  help="Potential regularization (-ve for a scan)")
 
 parser.add_option('--NIter', type="int", default=300,
                   help="Maximum inversion iterations")
@@ -69,6 +75,8 @@ parser.add_option('--eps_Cut', type="float", default=3.0,
                   help="Ignore eps>eps_Cut in response")
 parser.add_option('--W_Cut', type="float", default=0.5,
                   help="Cut response after this fraction")
+parser.add_option('--ResponseEvery', type="int", default=1,
+                  help="Update response every this steps")
 
 (Opts, args) = parser.parse_args()
 
@@ -79,13 +87,17 @@ psi4.set_options({
     "reference": "rhf",
     "freeze_core": Opts.Freeze,
     "scf_type": "df",
+    "e_convergence": 1e-6,
+    "r_convergence": 1e-6,
     #"cc_type": "df",
     #"df_ints": "save",
+    #"df_basis_scf": "aug-cc-pv5z-decon",
 })
 
-if Opts.Safe:
+if Opts.Safe: # Safer calculations for tricky problems
     psi4.set_options({
         #"mom_start": 2,
+        "level_shift": 1.5,
         "damping_percentage": 80.,
         #"SCF_INITIAL_ACCELERATOR": None,
         "DIIS_START_CONVERGENCE": 1e-9,
@@ -93,6 +105,12 @@ if Opts.Safe:
         'maxiter': 300,
     })    
 
+if Opts.NoDF: # No density fitting
+    psi4.set_options({
+        "scf_type": "pk",
+        "cc_type": "cd",
+    })
+    
 GeomStr = """
 0 1
 Li
@@ -100,7 +118,7 @@ H 1 3.0
 """
 
 print("="*72)
-print("Running %s @ %s"%(Opts.M, Opts.Basis))
+print("Running %s @ %s starting from %s"%(Opts.M, Opts.Basis, Opts.DFA))
 print("="*72)
 
 if not(Opts.M is None):
@@ -119,12 +137,18 @@ E0, wfn = psi4.energy("scf", dft_functional=GetDFA(Opts.DFA), return_wfn=True)
 XHelp = InversionHelper(wfn)
 RHelp = ReferenceHelper(Opts.M, Level=Opts.Reference)
 
+print("Occupation factors")
 print(XHelp.f)
 
 D_HF = XHelp.SymHelp.Dense(wfn_HF.Da().to_array()) + XHelp.SymHelp.Dense(wfn_HF.Db().to_array())
 F_HF = XHelp.SymHelp.Dense(wfn_HF.Fa().to_array())
 E_Ref, D_Ref = RHelp.CalculateReference(XHelp, Force=Opts.ForceCCSD, D_Size = D_HF)
 
+fno, _ = la.eigh(-D_Ref, la.inv(XHelp.S_ao))
+fno = -fno[np.abs(fno)>1e-4]
+
+print("Natural occupation factors")
+print(fno)
 
 psi4.core.clean()
 
@@ -134,26 +158,31 @@ XHelp.SetInversionParameters(
     NAlwaysReport=3, NReport = min(100,int(np.ceil(Opts.NIter/5))),
     a_Max = Opts.a_Max,
     W_Cut = Opts.W_Cut,
+    ResponseEvery = Opts.ResponseEvery,
     EThermal = Opts.EThermal,
     SOnly = Opts.SOnly,
 )
 
+t0 = time.perf_counter()
 print("Initialising the important pairs")
 XHelp.InitResponse(eps_Cut = Opts.eps_Cut)
 
 print("Doing the inversion")
 XHelp.InvertLiebResponse(D_Ref)
 
+t1 = time.perf_counter()
+print("-- time taken for inversion = %.3f s"%(t1-t0))
+
 if Opts.M is None: quit()
 CoreFileName = os.path.basename(Opts.M)
 if not(Opts.Reference.lower()=="ccsd"):
     CoreFileName += "_"+Opts.Reference.upper()
-if (Opts.a_Max > 3.):
+if (Opts.a_Max > 10.):
     CoreFileName += "_am%.1f"%(Opts.a_Max)
     
 
 if Opts.Calcdv and not(Opts.DFA.upper() in ("HF", "SCF")):
-    PHelp = PotentialHelper(XHelp, eta=1e-5)
+    PHelp = PotentialHelper(XHelp, eta=Opts.PotReg)
     xyz, w = PHelp.xyz, PHelp.w
 
     print("="*72)
@@ -164,21 +193,27 @@ if Opts.Calcdv and not(Opts.DFA.upper() in ("HF", "SCF")):
         ForceUpdate = True,
     )
     print("="*72)
-    
+
+# Calculate the linear response error factor
+VxcFactor = XHelp.GetVxcFactor()
+
 
 np.savez("Densities/Conv_%s_%s_%s.npz"%(CoreFileName, Opts.Basis.lower(), Opts.DFA.lower()),
          xyz_Nuc = Mol.geometry().to_array(dense=True),
          Occ = XHelp.f, S = XHelp.S_ao, H = XHelp.H_ao,
+         C = XHelp.C,
          C_Ref = XHelp.C_Ref, epsilon_Ref = XHelp.epsilon_Ref,
          D_Ref = XHelp.D_Ref, D_DFA = XHelp.D,
          F_Ref = XHelp.F_Ref, F_HF_Ref = XHelp.F_HF_Ref, F0 = XHelp.F,
+         FMF_Ref = XHelp.FMF_Ref, FMF0 = XHelp.FMF0,
          Ts = XHelp.Ts_Ref, Ts0 = XHelp.Ts0, TsF = XHelp.Ts_Direct,
+         VxcFactor = VxcFactor,
          En_Iter = XHelp.En_Iter, Fs_Iter = XHelp.Fs_Iter,
 )
 
 if Opts.CalcPot or Opts.CalcPotc \
    and not(Opts.DFA.upper() in ("HF", "SCF")):
-    PHelp = PotentialHelper(XHelp, eta=1e-5)
+    PHelp = PotentialHelper(XHelp, eta=Opts.PotReg)
     xyz, w = PHelp.xyz, PHelp.w
 
     print("="*72)
@@ -197,6 +232,7 @@ if Opts.CalcPot or Opts.CalcPotc \
             Mode = "c",
             Normalize = Opts.NormPot,
             Debug=True)
+
         print("="*72)
 
         rhox = rhoxc - rhoc
@@ -208,10 +244,11 @@ if Opts.CalcPot or Opts.CalcPotc \
               %(np.dot(w, rho), np.dot(w, rhoxc)))
 
 
+    rho_u = PHelp.rho_u
     np.savez("Densities/rho_%s_%s_%s.npz"%(CoreFileName, Opts.Basis.lower(), Opts.DFA.lower()),
              epsilon_Vs = XHelp.epsilon_Ref,
              xyz=xyz, w=w,
-             rho=rho, rhoxc=rhoxc, rhox=rhox, rhoc=rhoc,
+             rho=rho, rho_u = rho_u, rhoxc=rhoxc, rhox=rhox, rhoc=rhoc,
              xyz_Nuc = Mol.geometry().to_array(dense=True),
     )
     
